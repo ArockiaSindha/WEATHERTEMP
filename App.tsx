@@ -1,118 +1,174 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React, { useEffect, useState } from 'react'
+import { SafeAreaView, Text, StyleSheet , Button, View} from 'react-native';
+import Geolocation from 'react-native-geolocation-service';
+import axios from 'axios';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { enableScreens } from 'react-native-screens';
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
+interface Weather {
+  temperature: string;
+  humidity: string;
+  THI: string;
+  heatStressLevel: string;
+  respiration: string;
+  bodyTemperature: string;
 }
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const [weather, setWeather] = useState<Weather>({ temperature: '', humidity: '',THI:'',heatStressLevel: '',
+  respiration: '',
+  bodyTemperature: '',});
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const [lastRefreshed, setLastRefreshed] = useState<number>(0);
+
+  const calculateTHI = (Tmax: number, RHmin: number): number => {
+    return (1.8 * Tmax + 32) - ((0.55 - 0.0055 * RHmin) * (1.8 * Tmax - 26.8));
   };
 
+  const determineHeatStressLevel = (THI: number) => {
+    if (THI < 68) {
+      return {
+        heatStressLevel: 'No heat stress',
+        respiration: '40-60 breaths per minute',
+        bodyTemperature: '101.5-102.5°F',
+      };
+    } else if (THI >= 68 && THI <= 71) {
+      return {
+        heatStressLevel: 'Mild',
+        respiration: '60-75 breaths per minute',
+        bodyTemperature: '102.5-103°F',
+      };
+    } else if (THI >= 72 && THI <= 79) {
+      return {
+        heatStressLevel: 'Mild to moderate',
+        respiration: '75-85 breaths per minute',
+        bodyTemperature: '103-104°F',
+      };
+    } else if (THI >= 80 && THI <= 90) {
+      return {
+        heatStressLevel: 'Moderate to severe',
+        respiration: '85-100 breaths per minute',
+        bodyTemperature: '104-105°F',
+      };
+    } else {
+      return {
+        heatStressLevel: 'Severe',
+        respiration: '100-104 breaths per minute',
+        bodyTemperature: 'Over 105°F',
+      };
+    }
+  };
+
+  const fetchWeather = async (latitude: number, longitude: number): Promise<void> => {
+    const apiKey = '4273d45c3cbf13ffd8ca7200c51ff399';
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${apiKey}`;
+
+    try {
+      const response = await axios.get(url);
+      const { temp, humidity } = response.data.main;
+      const THI = calculateTHI(temp, humidity);
+      const { heatStressLevel, respiration, bodyTemperature } = determineHeatStressLevel(THI);
+      setWeather({ temperature: temp.toString(), humidity: humidity.toString(), THI: THI.toString(), heatStressLevel,
+        respiration,
+        bodyTemperature,});
+      setLastRefreshed(Date.now());
+     } catch (error) {
+      console.error(error);
+    }
+  };
+
+
+  const handleRefresh = () => {
+    Geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        fetchWeather(latitude, longitude);
+      },
+      (error) => console.error(error),
+      { enableHighAccuracy: true }
+    );
+  };
+
+
+
+  useEffect(() => {
+    const watchId = Geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        fetchWeather(latitude, longitude);
+      },
+      (error) => console.error(error),
+      { enableHighAccuracy: true, distanceFilter: 100 }
+    );
+
+    return () => Geolocation.clearWatch(watchId);
+  }, []);
+
+
+  const isRefreshEnabled = Date.now() - lastRefreshed >= 5 * 60 * 1000;
+
+
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.text}>Temperature: {weather.temperature}°C</Text>
+      <Text style={styles.text}>Humidity: {weather.humidity}%</Text>
+      <Text style={styles.text}>THI: {weather.THI}</Text>
+      <Text style={styles.text}>Heat Stress Level: {weather.heatStressLevel}</Text>
+      <Text style={styles.text}>Respiration: {weather.respiration}</Text>
+      <Text style={styles.text}>Body Temperature: {weather.bodyTemperature}</Text>
+      <View style={styles.buttonContainer}>
+      <Button title="Refresh" onPress={handleRefresh} disabled={!isRefreshEnabled} />
+      <Button title="Next" onPress={() => navigation.navigate('Details')} />
+      </View>
     </SafeAreaView>
   );
-}
+};
+
+const DetailsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.text}>NEXT PAGE</Text>
+      <View style={styles.buttonContainer}>
+        <Button title="Back" onPress={() => navigation.goBack()} />
+      </View>
+    </SafeAreaView>
+  );
+};
+enableScreens();
+
+const Stack = createStackNavigator();
+
+const App: React.FC = () => {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="Home">
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Details" component={DetailsScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  buttonContainer: {
+    marginTop: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    padding: 20, 
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
+  text: {
+    fontSize: 20,
+    color: '#FF5733',
+  }
 });
 
 export default App;
+
